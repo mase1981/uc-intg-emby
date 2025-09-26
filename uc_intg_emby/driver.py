@@ -82,14 +82,14 @@ async def process_setup_data(setup_data: dict):
     user_id = setup_data.get("user_id", "").strip()
 
     if not server_url or not api_key:
-        return ucapi.SetupError(ucapi.IntegrationSetupError.INVALID_INPUT, "URL and API Key are required.")
+        return ucapi.SetupError(ucapi.IntegrationSetupError.INVALID_INPUT)
 
     temp_client = EmbyClient(server_url, api_key, user_id)
     success, message = await temp_client.test_connection()
     await temp_client.close()
 
     if not success:
-        return ucapi.SetupError(ucapi.IntegrationSetupError.CONNECTION_REFUSED, message)
+        return ucapi.SetupError(ucapi.IntegrationSetupError.CONNECTION_REFUSED)
 
     config.update_config({"server_url": server_url, "api_key": api_key, "user_id": user_id})
     
@@ -211,6 +211,7 @@ async def on_subscribe_entities(entity_ids: List[str]):
             _LOG.error("Cannot recover - no configuration available")
             return
     
+    # CRITICAL: Use entity objects directly, not API collections
     available_entity_ids = []
     for player in media_players.values():
         available_entity_ids.append(player.id)
@@ -245,6 +246,7 @@ async def main():
         config = Config()
         if config.is_configured():
             _LOG.info("Found existing configuration, pre-initializing entities for reboot survival")
+            # Create task to initialize entities before UC Remote tries to subscribe
             loop.create_task(_initialize_entities())
         
         driver_path = os.path.join(os.path.dirname(__file__), "..", "driver.json")

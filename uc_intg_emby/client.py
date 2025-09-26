@@ -6,6 +6,7 @@ Emby Media Server API client.
 """
 import asyncio
 import logging
+import ssl
 from typing import Any, Optional
 from urllib.parse import quote, urljoin
 
@@ -27,9 +28,16 @@ class EmbyClient:
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
+            ssl_context = None
+            if self._server_url.startswith('https://'):
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            
             self._session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=10),
-                headers={"User-Agent": "UC-Emby-Integration/1.0.0"}
+                headers={"User-Agent": "UC-Emby-Integration/1.0.0"},
+                connector=aiohttp.TCPConnector(ssl=ssl_context) if ssl_context else None
             )
         return self._session
 
