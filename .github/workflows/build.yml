@@ -33,10 +33,12 @@ jobs:
           # Extract version from git tag (remove 'v' prefix)
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "DRIVER_ID=$(jq .driver_id -r driver.json)" >> $GITHUB_ENV
+          # Extract just the base name from driver_id to avoid duplication
+          DRIVER_BASE=$(jq .driver_id -r driver.json | sed 's/^uc-intg-//')
+          echo "DRIVER_ID=$DRIVER_BASE" >> $GITHUB_ENV
           # Save to Github output to later use it in Create Release job
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "DRIVER_ID=$(jq .driver_id -r driver.json)" >> $GITHUB_OUTPUT
+          echo "DRIVER_ID=$DRIVER_BASE" >> $GITHUB_OUTPUT
 
       - name: Build
         run: |
@@ -51,7 +53,7 @@ jobs:
             bash -c \
             "cd /workspace && \
               python -m pip install -r requirements.txt && \
-              pyinstaller --clean --onedir --name intg-${DRIVER_ID} --collect-all zeroconf uc_intg_emby/driver.py"
+              pyinstaller --clean --onedir --name intg-${{ env.DRIVER_ID }} --collect-all zeroconf uc_intg_emby/driver.py"
 
       - name: Prepare artifacts
         shell: bash
