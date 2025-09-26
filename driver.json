@@ -1,0 +1,61 @@
+{
+  "driver_id": "uc-intg-emby",
+  "version": "1.0.0",
+  "min_core_api": "0.21.0",
+  "name": {
+    "en": "Emby Media Server"
+  },
+  "icon": "uc:media-player",
+  "description": {
+    "en": "Integration for Emby Media Server providing media player control for active sessions"
+  },
+  "icon": "uc:tv",
+  "port": 9090,
+  "developer": {
+    "name": "Meir Miyara",
+    "email": "meir.miyara@gmail.com",
+    "url": "https://github.com/mase1981"
+  },
+  "homepage": "https://github.com/mase1981/uc-intg-emby",
+  "setup_data_schema": {
+    "title": {
+      "en": "Emby Server Configuration"
+    },
+    "settings": [
+      {
+        "id": "server_url",
+        "label": {
+          "en": "Server URL"
+        },
+        "field": {
+          "text": {
+            "value": "http://"
+          }
+        }
+      },
+      {
+        "id": "api_key",
+        "label": {
+          "en": "API Key"
+        },
+        "field": {
+          "text": {
+            "value": ""
+          }
+        }
+      },
+      {
+        "id": "user_id",
+        "label": {
+          "en": "User ID (optional)"
+        },
+        "field": {
+          "text": {
+            "value": ""
+          }
+        }
+      }
+    ]
+  },
+  "release_date": "2025-01-25"
+}
