@@ -1,15 +1,14 @@
 {
   "driver_id": "uc-intg-emby",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "min_core_api": "0.21.0",
   "name": {
     "en": "Emby Media Server"
   },
-  "icon": "uc:media-player",
+  "icon": "uc:tv",
   "description": {
     "en": "Integration for Emby Media Server providing media player control for active sessions"
   },
-  "icon": "uc:tv",
   "port": 9090,
   "developer": {
     "name": "Meir Miyara",
