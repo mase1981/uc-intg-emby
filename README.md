@@ -1,4 +1,4 @@
-# Emby Media Server Integration for Unfolded Circle Remote 2/3
+# Emby Media Server Integration for Unfolded Circle Remote two/3
 
 Control your Emby Media Server directly from your Unfolded Circle Remote 2 or Remote 3 with comprehensive media player functionality for active sessions.
 
