@@ -153,6 +153,7 @@ async def poll_for_sessions():
             for session_id in ended_session_ids:
                 _LOG.info(f"Session ended: {media_players[session_id].name.get('en')}")
                 player = media_players.pop(session_id)
+                player._clear_media_attributes()  # Clear attributes before removing
                 player.stop_monitoring()
                 api.available_entities.remove(player.id)
             
