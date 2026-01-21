@@ -29,9 +29,9 @@ _connection_monitor_task = None
 _initialization_lock = asyncio.Lock()
 
 async def _initialize_entities():
-    """Initialize entities with race condition protection - MANDATORY for reboot survival."""
+    """Initialize entities with race condition protection for reboot survival."""
     global config, client, api, entities_ready, media_players
-    
+
     async with _initialization_lock:
         if entities_ready:
             _LOG.debug("Entities already initialized, skipping")
@@ -55,19 +55,16 @@ async def _initialize_entities():
                 _LOG.error(f"Failed to connect to Emby during initialization: {message}")
                 return
                 
-            # Clear existing entities and media players
             for player in media_players.values():
                 player.stop_monitoring()
             media_players.clear()
             api.available_entities.clear()
-            
-            # Mark entities as ready BEFORE setting connected state
+
             entities_ready = True
-            
+
             _LOG.info(f"Successfully initialized Emby connection: {message}")
             _LOG.info("Entities ready for subscription - starting session polling")
-            
-            # Start session polling to create dynamic entities
+
             start_session_polling()
             
         except Exception as e:
@@ -92,23 +89,19 @@ async def process_setup_data(setup_data: dict):
         return ucapi.SetupError(ucapi.IntegrationSetupError.CONNECTION_REFUSED)
 
     config.update_config({"server_url": server_url, "api_key": api_key, "user_id": user_id})
-    
-    # Initialize entities after successful setup
+
     await _initialize_entities()
     return ucapi.SetupComplete()
 
 async def setup_handler(msg: ucapi.SetupDriver) -> ucapi.SetupAction:
-    """Handles the setup process correctly."""
+    """Handles the setup process."""
     global config
 
-    # Handle initial setup request or reconfiguration
     if isinstance(msg, ucapi.DriverSetupRequest):
-        # If remote provides data directly, process it without asking user
         if msg.setup_data:
             _LOG.info("Processing setup data provided by remote.")
             return await process_setup_data(msg.setup_data)
-        
-        # Otherwise, ask the user for input
+
         _LOG.info("Setup requested. Sending configuration fields to remote.")
         return ucapi.RequestUserInput(
             title={"en": "Emby Server Configuration"},
@@ -119,12 +112,10 @@ async def setup_handler(msg: ucapi.SetupDriver) -> ucapi.SetupAction:
             ]
         )
 
-    # Handle the user's submitted data
     if isinstance(msg, ucapi.UserDataResponse):
         _LOG.info("Received user data for setup.")
         return await process_setup_data(msg.input_values)
 
-    # Handle abort message
     if isinstance(msg, ucapi.AbortDriverSetup):
         _LOG.warning(f"Setup aborted by remote: {msg.error}")
         return ucapi.SetupError(msg.error)
@@ -133,30 +124,43 @@ async def setup_handler(msg: ucapi.SetupDriver) -> ucapi.SetupAction:
     return ucapi.SetupError(ucapi.IntegrationSetupError.OTHER)
 
 async def poll_for_sessions():
-    """Periodically poll for Emby sessions and update available entities."""
+    """Poll for Emby sessions and update entities. Uses DeviceId for stability across reboots."""
     global client, media_players, api, entities_ready
-    
+
     while entities_ready:
         try:
             sessions = await client.get_sessions() if client else []
-            active_session_ids = {s['Id'] for s in sessions}
+            active_device_ids = {s.get('DeviceId') for s in sessions if s.get('DeviceId')}
 
             for session in sessions:
-                session_id = session['Id']
-                if session_id not in media_players:
-                    _LOG.info(f"Found new session: {session.get('DeviceName')}")
-                    player = EmbyMediaPlayer(client, session, api)
-                    media_players[session_id] = player
-                    api.available_entities.add(player)
+                device_id = session.get('DeviceId')
+                if not device_id:
+                    _LOG.warning(f"Session without DeviceId, skipping: {session.get('DeviceName')}")
+                    continue
 
-            ended_session_ids = set(media_players.keys()) - active_session_ids
-            for session_id in ended_session_ids:
-                _LOG.info(f"Session ended: {media_players[session_id].name.get('en')}")
-                player = media_players.pop(session_id)
-                player._clear_media_attributes()  # Clear attributes before removing
+                if device_id not in media_players:
+                    _LOG.info(f"Found new device: {session.get('DeviceName')} (DeviceId: {device_id})")
+                    player = EmbyMediaPlayer(client, session, api)
+                    media_players[device_id] = player
+                    api.available_entities.add(player)
+                else:
+                    player = media_players[device_id]
+                    old_session_id = player._session_data.get('Id')
+                    new_session_id = session.get('Id')
+
+                    if old_session_id != new_session_id:
+                        _LOG.info(f"Session ID changed for {session.get('DeviceName')}: {old_session_id} -> {new_session_id} (server likely rebooted)")
+
+                    await player.update_from_session(session)
+
+            ended_device_ids = set(media_players.keys()) - active_device_ids
+            for device_id in ended_device_ids:
+                _LOG.info(f"Device disconnected: {media_players[device_id].name.get('en')}")
+                player = media_players.pop(device_id)
+                player._clear_media_attributes()
                 player.stop_monitoring()
                 api.available_entities.remove(player.id)
-            
+
             await asyncio.sleep(10)
         except asyncio.CancelledError:
             break
@@ -171,17 +175,16 @@ def start_session_polling():
     _connection_monitor_task = asyncio.create_task(poll_for_sessions())
 
 async def on_connect():
-    """Handle Remote connection with reboot survival - MANDATORY IMPLEMENTATION."""
+    """Handle Remote connection with reboot survival."""
     global config, entities_ready
-    
+
     _LOG.info("Remote connected. Checking configuration state...")
-    
+
     if not config:
         config = Config()
-    
+
     config.reload_from_disk()
-    
-    # If configured but entities not ready, initialize them now
+
     if config.is_configured() and not entities_ready:
         _LOG.info("Configuration found but entities missing, reinitializing for reboot survival...")
         try:
@@ -190,8 +193,7 @@ async def on_connect():
             _LOG.error("Failed to reinitialize entities: %s", e)
             await api.set_device_state(ucapi.DeviceStates.ERROR)
             return
-    
-    # Set appropriate device state
+
     if config.is_configured() and entities_ready:
         await api.set_device_state(ucapi.DeviceStates.CONNECTED)
     elif not config.is_configured():
@@ -200,10 +202,9 @@ async def on_connect():
         await api.set_device_state(ucapi.DeviceStates.ERROR)
 
 async def on_subscribe_entities(entity_ids: List[str]):
-    """Handle entity subscriptions with race condition protection - CRITICAL FIX."""
+    """Handle entity subscriptions with race condition protection."""
     _LOG.info(f"Entities subscription requested: {entity_ids}")
-    
-    # Guard against race condition - MANDATORY CHECK
+
     if not entities_ready:
         _LOG.error("RACE CONDITION: Subscription before entities ready! Attempting recovery...")
         if config and config.is_configured():
@@ -211,15 +212,10 @@ async def on_subscribe_entities(entity_ids: List[str]):
         else:
             _LOG.error("Cannot recover - no configuration available")
             return
-    
-    # CRITICAL: Use entity objects directly, not API collections
-    available_entity_ids = []
-    for player in media_players.values():
-        available_entity_ids.append(player.id)
-    
+
+    available_entity_ids = [player.id for player in media_players.values()]
     _LOG.info(f"Available entities: {available_entity_ids}")
-    
-    # Process subscriptions
+
     for entity_id in entity_ids:
         player = next((p for p in media_players.values() if p.id == entity_id), None)
         if player:
@@ -237,36 +233,34 @@ async def on_unsubscribe_entities(entity_ids: List[str]):
             api.configured_entities.remove(player.id)
 
 async def main():
-    """Main entry point with pre-initialization for reboot survival - MANDATORY PATTERN."""
+    """Main entry point with pre-initialization for reboot survival."""
     global api, config, _main_task
-    
+
     try:
         loop = asyncio.get_running_loop()
         api = ucapi.IntegrationAPI(loop=loop)
-        
+
         config = Config()
         if config.is_configured():
             _LOG.info("Found existing configuration, pre-initializing entities for reboot survival")
-            # Create task to initialize entities before UC Remote tries to subscribe
             loop.create_task(_initialize_entities())
-        
+
         driver_path = os.path.join(os.path.dirname(__file__), "..", "driver.json")
-        
-        # Register event handlers
+
         api.add_listener(ucapi.Events.CONNECT, on_connect)
         api.add_listener(ucapi.Events.SUBSCRIBE_ENTITIES, on_subscribe_entities)
         api.add_listener(ucapi.Events.UNSUBSCRIBE_ENTITIES, on_unsubscribe_entities)
-        
+
         await api.init(driver_path, setup_handler)
         _LOG.info("Driver initialized. Waiting for connection.")
-        
+
         _main_task = asyncio.Future()
         await _main_task
-        
+
     except asyncio.CancelledError:
         _LOG.info("Main task cancelled.")
     finally:
-        if client: 
+        if client:
             await client.close()
 
 if __name__ == "__main__":
