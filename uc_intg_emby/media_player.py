@@ -24,15 +24,14 @@ class EmbyMediaPlayer(ucapi.MediaPlayer):
         self._api = api
         self._update_task: Optional[asyncio.Task] = None
         self._is_monitoring = False
-        
-        # Store the list of supported commands for this specific session
+
         self.supported_commands: List[str] = session_data.get('SupportedCommands', [])
 
-        session_id = session_data.get('Id', '')
+        device_id = session_data.get('DeviceId', '')
         device_name = session_data.get('DeviceName', 'Unknown Device')
         client_name = session_data.get('Client', 'Unknown Client')
-        
-        entity_id = f"emby_{session_id}"
+
+        entity_id = f"emby_{device_id}"
         
         if device_name and device_name != client_name:
             entity_name = f"{client_name} ({device_name})"
@@ -111,6 +110,13 @@ class EmbyMediaPlayer(ucapi.MediaPlayer):
                 attributes[ucapi.media_player.Attributes.MEDIA_IMAGE_URL] = image_url
         else:
             attributes[ucapi.media_player.Attributes.STATE] = ucapi.media_player.States.STANDBY
+            attributes[ucapi.media_player.Attributes.MEDIA_TYPE] = None
+            attributes[ucapi.media_player.Attributes.MEDIA_TITLE] = None
+            attributes[ucapi.media_player.Attributes.MEDIA_ARTIST] = None
+            attributes[ucapi.media_player.Attributes.MEDIA_ALBUM] = None
+            attributes[ucapi.media_player.Attributes.MEDIA_IMAGE_URL] = None
+            attributes[ucapi.media_player.Attributes.MEDIA_DURATION] = None
+            attributes[ucapi.media_player.Attributes.MEDIA_POSITION] = None
 
         if play_state.get('VolumeLevel') is not None:
             attributes[ucapi.media_player.Attributes.VOLUME] = play_state['VolumeLevel']
@@ -130,15 +136,14 @@ class EmbyMediaPlayer(ucapi.MediaPlayer):
     async def command_handler(self, entity: ucapi.Entity, cmd_id: str, params: dict[str, Any] | None = None) -> ucapi.StatusCodes:
         session_id = self._session_data.get('Id')
         _LOG.info(f"COMMAND RECEIVED: '{cmd_id}' for session '{session_id}'")
-        
+
         if not session_id:
             _LOG.error("Command failed: No session ID found.")
             return ucapi.StatusCodes.SERVER_ERROR
 
         try:
             success = False
-            
-            # THIS IS THE FINAL FIX: Dynamically send the correct command based on what the client supports.
+
             if cmd_id == ucapi.media_player.Commands.PLAY_PAUSE:
                 success = await self._send_prioritized_command(session_id, ["PlayPause", "Select"])
             elif cmd_id == ucapi.media_player.Commands.STOP:
@@ -167,23 +172,39 @@ class EmbyMediaPlayer(ucapi.MediaPlayer):
                 return ucapi.StatusCodes.NOT_IMPLEMENTED
 
             _LOG.info(f"Command '{cmd_id}' execution result: {'Success' if success else 'Failed'}")
-            
+
             if success:
                 await asyncio.sleep(0.5)
                 await self.push_update()
-            
+
             return ucapi.StatusCodes.OK if success else ucapi.StatusCodes.SERVER_ERROR
-            
+
         except Exception as e:
             _LOG.error(f"Command execution failed with exception: {e}", exc_info=True)
             return ucapi.StatusCodes.SERVER_ERROR
 
+    def _clear_media_attributes(self):
+        """Clear all media attributes and set state to STANDBY."""
+        cleared_attributes = {
+            ucapi.media_player.Attributes.STATE: ucapi.media_player.States.STANDBY,
+            ucapi.media_player.Attributes.MEDIA_TYPE: None,
+            ucapi.media_player.Attributes.MEDIA_TITLE: None,
+            ucapi.media_player.Attributes.MEDIA_ARTIST: None,
+            ucapi.media_player.Attributes.MEDIA_ALBUM: None,
+            ucapi.media_player.Attributes.MEDIA_IMAGE_URL: None,
+            ucapi.media_player.Attributes.MEDIA_DURATION: None,
+            ucapi.media_player.Attributes.MEDIA_POSITION: None,
+            ucapi.media_player.Attributes.MUTED: False
+        }
+        self.attributes.update(cleared_attributes)
+        if self._api:
+            self._api.configured_entities.update_attributes(self.id, cleared_attributes)
+
     async def update_from_session(self, session_data: dict[str, Any]):
         self._session_data = session_data
-        # Update our knowledge of supported commands in case they change
         self.supported_commands = session_data.get('SupportedCommands', [])
         new_attributes = self._build_attributes()
-        
+
         if new_attributes != self.attributes:
             self.attributes.update(new_attributes)
             if self._api:
@@ -192,18 +213,20 @@ class EmbyMediaPlayer(ucapi.MediaPlayer):
     async def push_update(self):
         session_id = self._session_data.get('Id')
         if not session_id: return
-        
+
         try:
             updated_session = await self._client.get_session_by_id(session_id)
             if updated_session:
                 await self.update_from_session(updated_session)
             else:
                 _LOG.info(f"Session {session_id} appears to have ended.")
+                self._clear_media_attributes()
                 self.stop_monitoring()
                 if self._api:
                     self._api.available_entities.remove(self.id)
         except Exception as e:
             _LOG.error(f"Error during push_update for {self.id}: {e}", exc_info=True)
+            self._clear_media_attributes()
 
     async def _periodic_update(self):
         while self._is_monitoring:

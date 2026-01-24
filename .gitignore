@@ -55,7 +55,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-
+/tools
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -86,7 +86,10 @@ Thumbs.db
 
 # Integration specific
 artifacts/
-version_info.txt
-tools/
-test*
 
+# Ai Tools
+Claude/
+.claude/
+
+# Git files
+.gitignore
