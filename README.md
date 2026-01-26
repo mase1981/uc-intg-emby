@@ -6,7 +6,7 @@ Control your Emby Media Server directly from your Unfolded Circle Remote 2 or Re
 [![GitHub Release](https://img.shields.io/github/v/release/mase1981/uc-intg-emby?style=flat-square)](https://github.com/mase1981/uc-intg-emby/releases)
 ![License](https://img.shields.io/badge/license-MPL--2.0-blue?style=flat-square)
 [![GitHub issues](https://img.shields.io/github/issues/mase1981/uc-intg-emby?style=flat-square)](https://github.com/mase1981/uc-intg-emby/issues)
-[![Community Forum](https://img.shields.io/badge/community-forum-blue?style=flat-square)](https://community.unfoldedcircle.com/)
+[![Community Forum](https://img.shields.io/badge/community-forum-blue?style=flat-square)](https://unfolded.community/)
 [![Discord](https://badgen.net/discord/online-members/zGVYf58)](https://discord.gg/zGVYf58)
 ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/mase1981/uc-intg-emby/total?style=flat-square)
 [![Buy Me A Coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=flat-square)](https://buymeacoffee.com/meirmiyara)
@@ -180,7 +180,7 @@ This project is licensed under the Mozilla Public License 2.0 (MPL-2.0) - see LI
 ## Support & Community
 
 - **GitHub Issues**: [Report bugs and request features](https://github.com/mase1981/uc-intg-emby/issues)
-- **UC Community Forum**: [General discussion and support](https://community.unfoldedcircle.com/)
+- **UC Community Forum**: [General discussion and support](https://unfolded.community/)
 - **Developer**: [Meir Miyara](https://www.linkedin.com/in/meirmiyara)
 
 ---
