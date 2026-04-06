@@ -10,7 +10,7 @@ from ucapi_framework import MediaPlayerEntity
 
 from . import browser
 from .config import EmbyDeviceConfig
-from .const import EMBY_COMMAND_FALLBACKS, EMBY_TICKS_PER_SECOND
+from .const import EMBY_TICKS_PER_SECOND
 from .device import EmbyServer, sanitize_id
 
 _LOG = logging.getLogger(__name__)
@@ -228,29 +228,17 @@ class EmbyMediaPlayer(MediaPlayerEntity):
         self, session_id: str, cmd_id: str, params: dict[str, Any] | None
     ) -> bool:
         if cmd_id == media_player.Commands.PLAY_PAUSE:
-            return await self._device.send_prioritized_command(
-                session_id, EMBY_COMMAND_FALLBACKS["PlayPause"], self._supported_commands
-            )
+            return await self._device.send_playstate_command(session_id, "PlayPause")
         if cmd_id == media_player.Commands.STOP:
-            return await self._device.send_prioritized_command(
-                session_id, EMBY_COMMAND_FALLBACKS["Stop"], self._supported_commands
-            )
+            return await self._device.send_playstate_command(session_id, "Stop")
         if cmd_id == media_player.Commands.NEXT:
-            return await self._device.send_prioritized_command(
-                session_id, EMBY_COMMAND_FALLBACKS["NextTrack"], self._supported_commands
-            )
+            return await self._device.send_playstate_command(session_id, "NextTrack")
         if cmd_id == media_player.Commands.PREVIOUS:
-            return await self._device.send_prioritized_command(
-                session_id, EMBY_COMMAND_FALLBACKS["PreviousTrack"], self._supported_commands
-            )
+            return await self._device.send_playstate_command(session_id, "PreviousTrack")
         if cmd_id == media_player.Commands.FAST_FORWARD:
-            return await self._device.send_prioritized_command(
-                session_id, EMBY_COMMAND_FALLBACKS["FastForward"], self._supported_commands
-            )
+            return await self._device.send_playstate_command(session_id, "FastForward")
         if cmd_id == media_player.Commands.REWIND:
-            return await self._device.send_prioritized_command(
-                session_id, EMBY_COMMAND_FALLBACKS["Rewind"], self._supported_commands
-            )
+            return await self._device.send_playstate_command(session_id, "Rewind")
         if cmd_id == media_player.Commands.VOLUME_UP:
             return await self._device.send_command(session_id, "VolumeUp")
         if cmd_id == media_player.Commands.VOLUME_DOWN:
@@ -263,9 +251,7 @@ class EmbyMediaPlayer(MediaPlayerEntity):
             )
         if cmd_id == media_player.Commands.SEEK and params:
             position_ticks = int(params.get("media_position", 0)) * EMBY_TICKS_PER_SECOND
-            return await self._device.send_command(
-                session_id, "Seek", {"SeekPositionTicks": str(position_ticks)}
-            )
+            return await self._device.send_playstate_command(session_id, "Seek", position_ticks)
         if cmd_id == media_player.Commands.CURSOR_UP:
             return await self._device.send_command(session_id, "MoveUp")
         if cmd_id == media_player.Commands.CURSOR_DOWN:

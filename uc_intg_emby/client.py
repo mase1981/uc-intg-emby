@@ -86,6 +86,12 @@ class EmbyClient:
         result = await self._get(endpoint)
         return result if isinstance(result, list) else []
 
+    async def send_playstate_command(self, session_id: str, command: str, seek_ticks: int | None = None) -> bool:
+        endpoint = f"/Sessions/{session_id}/Playing/{command}"
+        if seek_ticks is not None:
+            endpoint += f"?SeekPositionTicks={seek_ticks}"
+        return await self._post(endpoint)
+
     async def send_command(self, session_id: str, command: str, arguments: dict[str, Any] | None = None) -> bool:
         if not arguments:
             return await self._post(f"/Sessions/{session_id}/Command/{command}")

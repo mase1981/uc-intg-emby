@@ -176,16 +176,10 @@ class EmbyServer(PollingDevice):
         if new_entities:
             self.driver.add_entities(new_entities)
 
-    async def send_prioritized_command(self, session_id: str, commands: list[str], supported: list[str]) -> bool:
+    async def send_playstate_command(self, session_id: str, command: str, seek_ticks: int | None = None) -> bool:
         if not self._client:
             return False
-        if not supported:
-            return await self._client.send_command(session_id, commands[0])
-        for cmd in commands:
-            if cmd in supported:
-                return await self._client.send_command(session_id, cmd)
-        _LOG.warning("None of %s supported by session", commands)
-        return False
+        return await self._client.send_playstate_command(session_id, command, seek_ticks)
 
     async def send_command(self, session_id: str, command: str, arguments: dict[str, Any] | None = None) -> bool:
         if not self._client:
