@@ -1,60 +1,39 @@
 {
   "driver_id": "uc-intg-emby",
-  "version": "1.0.7",
-  "min_core_api": "0.21.0",
+  "version": "2.0.0",
+  "min_core_api": "0.22.0",
   "name": {
     "en": "Emby Media Server"
   },
   "icon": "uc:tv",
   "description": {
-    "en": "Integration for Emby Media Server providing media player control for active sessions"
+    "en": "Integration for Emby Media Server providing media player control, media browsing, and server monitoring"
   },
-  "port": 9090,
   "developer": {
     "name": "Meir Miyara",
     "email": "meir.miyara@gmail.com",
     "url": "https://github.com/mase1981"
   },
-  "homepage": "https://github.com/mase1981/uc-intg-emby",
+  "home_page": "https://github.com/mase1981/uc-intg-emby",
   "setup_data_schema": {
     "title": {
-      "en": "Emby Server Configuration"
+      "en": "Emby Server Setup"
     },
     "settings": [
       {
-        "id": "server_url",
+        "id": "info",
         "label": {
-          "en": "Server URL"
+          "en": "Setup information"
         },
         "field": {
-          "text": {
-            "value": "http://"
-          }
-        }
-      },
-      {
-        "id": "api_key",
-        "label": {
-          "en": "API Key"
-        },
-        "field": {
-          "text": {
-            "value": ""
-          }
-        }
-      },
-      {
-        "id": "user_id",
-        "label": {
-          "en": "User ID (optional)"
-        },
-        "field": {
-          "text": {
-            "value": ""
+          "label": {
+            "value": {
+              "en": "Enter your Emby server URL and API key on the next screen."
+            }
           }
         }
       }
     ]
   },
-  "release_date": "2025-01-25"
+  "release_date": "2026-04-06"
 }

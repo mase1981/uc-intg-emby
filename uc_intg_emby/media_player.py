@@ -1,254 +1,290 @@
-"""
-Emby Media Player entity for Unfolded Circle Remote.
+"""Emby media player entity. :copyright: (c) 2026 by Meir Miyara. :license: MPL-2.0"""
+from __future__ import annotations
 
-:copyright: (c) 2025 by Meir Miyara.
-:license: MPL-2.0, see LICENSE for more details.
-"""
-
-import asyncio
 import logging
-from typing import Any, List, Optional
+from typing import Any, TYPE_CHECKING
 
-import ucapi
-from uc_intg_emby.client import EmbyClient
+from ucapi import media_player, StatusCodes
+from ucapi.api_definitions import BrowseOptions, BrowseResults, SearchOptions, SearchResults
+from ucapi_framework import MediaPlayerEntity
+
+from . import browser
+from .config import EmbyDeviceConfig
+from .const import EMBY_COMMAND_FALLBACKS, EMBY_TICKS_PER_SECOND
+from .device import EmbyServer, sanitize_id
 
 _LOG = logging.getLogger(__name__)
 
+BASE_FEATURES = [
+    media_player.Features.PLAY_PAUSE,
+    media_player.Features.STOP,
+    media_player.Features.NEXT,
+    media_player.Features.PREVIOUS,
+    media_player.Features.FAST_FORWARD,
+    media_player.Features.REWIND,
+    media_player.Features.SEEK,
+    media_player.Features.MEDIA_DURATION,
+    media_player.Features.MEDIA_POSITION,
+    media_player.Features.MEDIA_TITLE,
+    media_player.Features.MEDIA_ARTIST,
+    media_player.Features.MEDIA_ALBUM,
+    media_player.Features.MEDIA_IMAGE_URL,
+    media_player.Features.MEDIA_TYPE,
+    media_player.Features.DPAD,
+    media_player.Features.HOME,
+    media_player.Features.MENU,
+    media_player.Features.CONTEXT_MENU,
+    media_player.Features.PLAY_MEDIA,
+    media_player.Features.BROWSE_MEDIA,
+    media_player.Features.SEARCH_MEDIA,
+]
 
-class EmbyMediaPlayer(ucapi.MediaPlayer):
-    """Emby Media Player entity implementation."""
+VOLUME_FEATURES = [
+    media_player.Features.VOLUME,
+    media_player.Features.VOLUME_UP_DOWN,
+    media_player.Features.MUTE_TOGGLE,
+]
 
-    def __init__(self, client: EmbyClient, session_data: dict[str, Any], api: ucapi.IntegrationAPI):
-        self._client = client
-        self._session_data = session_data
-        self._api = api
-        self._update_task: Optional[asyncio.Task] = None
-        self._is_monitoring = False
 
-        self.supported_commands: List[str] = session_data.get('SupportedCommands', [])
+class EmbyMediaPlayer(MediaPlayerEntity):
+    """Media player entity for an active Emby session."""
 
-        device_id = session_data.get('DeviceId', '')
-        device_name = session_data.get('DeviceName', 'Unknown Device')
-        client_name = session_data.get('Client', 'Unknown Client')
+    def __init__(
+        self,
+        device_config: EmbyDeviceConfig,
+        device: EmbyServer,
+        session_data: dict[str, Any],
+    ) -> None:
+        self._device = device
+        self._emby_device_id = session_data.get("DeviceId", "")
+        self._supported_commands: list[str] = session_data.get("SupportedCommands", [])
 
-        entity_id = f"emby_{device_id}"
-        
+        device_name = session_data.get("DeviceName", "Unknown")
+        client_name = session_data.get("Client", "Unknown")
         if device_name and device_name != client_name:
             entity_name = f"{client_name} ({device_name})"
         else:
             entity_name = client_name
-        
-        features = [
-            ucapi.media_player.Features.PLAY_PAUSE, ucapi.media_player.Features.STOP,
-            ucapi.media_player.Features.NEXT, ucapi.media_player.Features.PREVIOUS,
-            ucapi.media_player.Features.SEEK, ucapi.media_player.Features.MEDIA_DURATION,
-            ucapi.media_player.Features.MEDIA_POSITION, ucapi.media_player.Features.MEDIA_TITLE,
-            ucapi.media_player.Features.MEDIA_ARTIST, ucapi.media_player.Features.MEDIA_ALBUM,
-            ucapi.media_player.Features.MEDIA_IMAGE_URL, ucapi.media_player.Features.MEDIA_TYPE,
-            ucapi.media_player.Features.FAST_FORWARD, ucapi.media_player.Features.REWIND,
-        ]
-        
-        if 'VolumeUp' in self.supported_commands:
-            features.extend([
-                ucapi.media_player.Features.VOLUME,
-                ucapi.media_player.Features.VOLUME_UP_DOWN,
-                ucapi.media_player.Features.MUTE_TOGGLE
-            ])
-        
-        attributes = self._build_attributes()
-        
+
+        features = list(BASE_FEATURES)
+        if "VolumeUp" in self._supported_commands:
+            features.extend(VOLUME_FEATURES)
+
+        safe_id = sanitize_id(self._emby_device_id)
+        entity_id = f"media_player.{device_config.identifier}.{safe_id}"
+
         super().__init__(
-            identifier=entity_id, name=entity_name, features=features,
-            attributes=attributes, device_class=ucapi.media_player.DeviceClasses.STREAMING_BOX,
-            cmd_handler=self.command_handler
+            entity_id,
+            entity_name,
+            features=features,
+            attributes={
+                media_player.Attributes.STATE: media_player.States.UNAVAILABLE,
+                media_player.Attributes.VOLUME: 0,
+                media_player.Attributes.MUTED: False,
+                media_player.Attributes.MEDIA_TITLE: "",
+                media_player.Attributes.MEDIA_ARTIST: "",
+                media_player.Attributes.MEDIA_ALBUM: "",
+                media_player.Attributes.MEDIA_IMAGE_URL: "",
+                media_player.Attributes.MEDIA_TYPE: "",
+                media_player.Attributes.MEDIA_DURATION: 0,
+                media_player.Attributes.MEDIA_POSITION: 0,
+            },
+            device_class=media_player.DeviceClasses.STREAMING_BOX,
+            cmd_handler=self._handle_command,
         )
+        self.subscribe_to_device(device)
 
-    def _build_attributes(self) -> dict[str, Any]:
-        attributes = {}
-        now_playing = self._session_data.get('NowPlayingItem')
-        play_state = self._session_data.get('PlayState', {})
-        
+    async def sync_state(self) -> None:
+        session = self._device.get_session(self._emby_device_id)
+        if not session or self._device.state == "UNAVAILABLE":
+            self.update({
+                media_player.Attributes.STATE: media_player.States.STANDBY,
+                media_player.Attributes.MEDIA_TITLE: "",
+                media_player.Attributes.MEDIA_ARTIST: "",
+                media_player.Attributes.MEDIA_ALBUM: "",
+                media_player.Attributes.MEDIA_IMAGE_URL: "",
+                media_player.Attributes.MEDIA_TYPE: "",
+                media_player.Attributes.MEDIA_DURATION: 0,
+                media_player.Attributes.MEDIA_POSITION: 0,
+            })
+            return
+
+        self._supported_commands = session.get("SupportedCommands", [])
+        attrs = self._build_attributes(session)
+        self.update(attrs)
+
+    def _build_attributes(self, session: dict[str, Any]) -> dict:
+        attrs: dict[str, Any] = {}
+        now_playing = session.get("NowPlayingItem")
+        play_state = session.get("PlayState", {})
+
         if now_playing:
-            is_paused = play_state.get('IsPaused', False)
-            attributes[ucapi.media_player.Attributes.STATE] = ucapi.media_player.States.PAUSED if is_paused else ucapi.media_player.States.PLAYING
-            
-            media_type = now_playing.get('Type', '')
-            if media_type == 'Episode':
-                attributes[ucapi.media_player.Attributes.MEDIA_TYPE] = ucapi.media_player.MediaType.TVSHOW
-                attributes[ucapi.media_player.Attributes.MEDIA_TITLE] = now_playing.get('Name', '')
-                series_name = now_playing.get('SeriesName', '')
-                season_num = now_playing.get('ParentIndexNumber')
-                episode_num = now_playing.get('IndexNumber')
-                if series_name and season_num is not None and episode_num is not None:
-                    attributes[ucapi.media_player.Attributes.MEDIA_ARTIST] = f"{series_name} - S{season_num:02d}E{episode_num:02d}"
-                else:
-                    attributes[ucapi.media_player.Attributes.MEDIA_ARTIST] = series_name or "TV Show"
-                attributes[ucapi.media_player.Attributes.MEDIA_ALBUM] = now_playing.get('SeasonName', '')
-            elif media_type == 'Movie':
-                attributes[ucapi.media_player.Attributes.MEDIA_TYPE] = ucapi.media_player.MediaType.MOVIE
-                movie_name = now_playing.get('Name', '')
-                year = now_playing.get('ProductionYear')
-                attributes[ucapi.media_player.Attributes.MEDIA_TITLE] = f"{movie_name} ({year})" if year else movie_name
-            elif media_type in ['Audio', 'MusicAlbum']:
-                attributes[ucapi.media_player.Attributes.MEDIA_TYPE] = ucapi.media_player.MediaType.MUSIC
-                attributes[ucapi.media_player.Attributes.MEDIA_TITLE] = now_playing.get('Name', '')
-                attributes[ucapi.media_player.Attributes.MEDIA_ARTIST] = ', '.join(now_playing.get('Artists', []))
-                attributes[ucapi.media_player.Attributes.MEDIA_ALBUM] = now_playing.get('Album', '')
+            is_paused = play_state.get("IsPaused", False)
+            attrs[media_player.Attributes.STATE] = (
+                media_player.States.PAUSED if is_paused else media_player.States.PLAYING
+            )
+            self._set_media_metadata(attrs, now_playing)
+
+            if now_playing.get("RunTimeTicks"):
+                attrs[media_player.Attributes.MEDIA_DURATION] = now_playing["RunTimeTicks"] // EMBY_TICKS_PER_SECOND
             else:
-                attributes[ucapi.media_player.Attributes.MEDIA_TYPE] = ucapi.media_player.MediaType.VIDEO
-                attributes[ucapi.media_player.Attributes.MEDIA_TITLE] = now_playing.get('Name', '')
+                attrs[media_player.Attributes.MEDIA_DURATION] = 0
 
-            if now_playing.get('RunTimeTicks'):
-                attributes[ucapi.media_player.Attributes.MEDIA_DURATION] = now_playing['RunTimeTicks'] // 10000000
-            if play_state.get('PositionTicks'):
-                attributes[ucapi.media_player.Attributes.MEDIA_POSITION] = play_state['PositionTicks'] // 10000000
+            attrs[media_player.Attributes.MEDIA_POSITION] = (
+                play_state.get("PositionTicks", 0) // EMBY_TICKS_PER_SECOND
+            )
 
-            if 'Primary' in now_playing.get('ImageTags', {}):
-                image_tag = now_playing['ImageTags']['Primary']
-                item_id = now_playing['Id']
-                image_url = f"{self._client._server_url}/Items/{item_id}/Images/Primary?tag={image_tag}&api_key={self._client._api_key}"
-                attributes[ucapi.media_player.Attributes.MEDIA_IMAGE_URL] = image_url
+            item_id = now_playing.get("Id")
+            if item_id and "Primary" in now_playing.get("ImageTags", {}):
+                attrs[media_player.Attributes.MEDIA_IMAGE_URL] = self._device.build_image_url(item_id)
+            else:
+                attrs[media_player.Attributes.MEDIA_IMAGE_URL] = ""
         else:
-            attributes[ucapi.media_player.Attributes.STATE] = ucapi.media_player.States.STANDBY
-            attributes[ucapi.media_player.Attributes.MEDIA_TYPE] = None
-            attributes[ucapi.media_player.Attributes.MEDIA_TITLE] = None
-            attributes[ucapi.media_player.Attributes.MEDIA_ARTIST] = None
-            attributes[ucapi.media_player.Attributes.MEDIA_ALBUM] = None
-            attributes[ucapi.media_player.Attributes.MEDIA_IMAGE_URL] = None
-            attributes[ucapi.media_player.Attributes.MEDIA_DURATION] = None
-            attributes[ucapi.media_player.Attributes.MEDIA_POSITION] = None
+            attrs[media_player.Attributes.STATE] = media_player.States.ON
+            attrs[media_player.Attributes.MEDIA_TITLE] = ""
+            attrs[media_player.Attributes.MEDIA_ARTIST] = ""
+            attrs[media_player.Attributes.MEDIA_ALBUM] = ""
+            attrs[media_player.Attributes.MEDIA_IMAGE_URL] = ""
+            attrs[media_player.Attributes.MEDIA_TYPE] = ""
+            attrs[media_player.Attributes.MEDIA_DURATION] = 0
+            attrs[media_player.Attributes.MEDIA_POSITION] = 0
 
-        if play_state.get('VolumeLevel') is not None:
-            attributes[ucapi.media_player.Attributes.VOLUME] = play_state['VolumeLevel']
-        attributes[ucapi.media_player.Attributes.MUTED] = play_state.get('IsMuted', False)
-        
-        return attributes
+        if play_state.get("VolumeLevel") is not None:
+            attrs[media_player.Attributes.VOLUME] = play_state["VolumeLevel"]
+        attrs[media_player.Attributes.MUTED] = play_state.get("IsMuted", False)
 
-    async def _send_prioritized_command(self, session_id: str, commands: List[str]) -> bool:
-        """Try to send commands from a prioritized list."""
-        for command in commands:
-            if command in self.supported_commands:
-                _LOG.info(f"Client supports '{command}', sending it.")
-                return await self._client.send_command(session_id, command)
-        _LOG.warning(f"Client does not support any of the priority commands: {commands}")
+        return attrs
+
+    def _set_media_metadata(self, attrs: dict, now_playing: dict) -> None:
+        media_type = now_playing.get("Type", "")
+
+        if media_type == "Episode":
+            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaType.TVSHOW
+            attrs[media_player.Attributes.MEDIA_TITLE] = now_playing.get("Name", "")
+            series = now_playing.get("SeriesName", "")
+            season_num = now_playing.get("ParentIndexNumber")
+            episode_num = now_playing.get("IndexNumber")
+            if series and season_num is not None and episode_num is not None:
+                attrs[media_player.Attributes.MEDIA_ARTIST] = f"{series} - S{season_num:02d}E{episode_num:02d}"
+            else:
+                attrs[media_player.Attributes.MEDIA_ARTIST] = series
+            attrs[media_player.Attributes.MEDIA_ALBUM] = now_playing.get("SeasonName", "")
+
+        elif media_type == "Movie":
+            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaType.MOVIE
+            name = now_playing.get("Name", "")
+            year = now_playing.get("ProductionYear")
+            attrs[media_player.Attributes.MEDIA_TITLE] = f"{name} ({year})" if year else name
+            attrs[media_player.Attributes.MEDIA_ARTIST] = ""
+            attrs[media_player.Attributes.MEDIA_ALBUM] = ""
+
+        elif media_type in ("Audio", "MusicAlbum"):
+            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaType.MUSIC
+            attrs[media_player.Attributes.MEDIA_TITLE] = now_playing.get("Name", "")
+            attrs[media_player.Attributes.MEDIA_ARTIST] = ", ".join(now_playing.get("Artists", []))
+            attrs[media_player.Attributes.MEDIA_ALBUM] = now_playing.get("Album", "")
+
+        else:
+            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaType.VIDEO
+            attrs[media_player.Attributes.MEDIA_TITLE] = now_playing.get("Name", "")
+            attrs[media_player.Attributes.MEDIA_ARTIST] = ""
+            attrs[media_player.Attributes.MEDIA_ALBUM] = ""
+
+    async def browse(self, options: BrowseOptions) -> BrowseResults | StatusCodes:
+        return await browser.browse(self._device, options)
+
+    async def search(self, options: SearchOptions) -> SearchResults | StatusCodes:
+        return await browser.search(self._device, options)
+
+    async def _handle_command(
+        self, entity: media_player.MediaPlayer, cmd_id: str, params: dict[str, Any] | None
+    ) -> StatusCodes:
+        session_id = self._device.get_session_id_for_device(self._emby_device_id)
+        if not session_id:
+            _LOG.warning("[%s] No active session for command %s", self.id, cmd_id)
+            return StatusCodes.SERVICE_UNAVAILABLE
+
+        try:
+            success = await self._dispatch_command(session_id, cmd_id, params)
+            return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
+        except Exception as err:
+            _LOG.error("[%s] Command %s failed: %s", self.id, cmd_id, err)
+            return StatusCodes.SERVER_ERROR
+
+    async def _dispatch_command(
+        self, session_id: str, cmd_id: str, params: dict[str, Any] | None
+    ) -> bool:
+        if cmd_id == media_player.Commands.PLAY_PAUSE:
+            return await self._device.send_prioritized_command(
+                session_id, EMBY_COMMAND_FALLBACKS["PlayPause"], self._supported_commands
+            )
+        if cmd_id == media_player.Commands.STOP:
+            return await self._device.send_prioritized_command(
+                session_id, EMBY_COMMAND_FALLBACKS["Stop"], self._supported_commands
+            )
+        if cmd_id == media_player.Commands.NEXT:
+            return await self._device.send_prioritized_command(
+                session_id, EMBY_COMMAND_FALLBACKS["NextTrack"], self._supported_commands
+            )
+        if cmd_id == media_player.Commands.PREVIOUS:
+            return await self._device.send_prioritized_command(
+                session_id, EMBY_COMMAND_FALLBACKS["PreviousTrack"], self._supported_commands
+            )
+        if cmd_id == media_player.Commands.FAST_FORWARD:
+            return await self._device.send_prioritized_command(
+                session_id, EMBY_COMMAND_FALLBACKS["FastForward"], self._supported_commands
+            )
+        if cmd_id == media_player.Commands.REWIND:
+            return await self._device.send_prioritized_command(
+                session_id, EMBY_COMMAND_FALLBACKS["Rewind"], self._supported_commands
+            )
+        if cmd_id == media_player.Commands.VOLUME_UP:
+            return await self._device.send_command(session_id, "VolumeUp")
+        if cmd_id == media_player.Commands.VOLUME_DOWN:
+            return await self._device.send_command(session_id, "VolumeDown")
+        if cmd_id == media_player.Commands.MUTE_TOGGLE:
+            return await self._device.send_command(session_id, "ToggleMute")
+        if cmd_id == media_player.Commands.VOLUME and params:
+            return await self._device.send_command(
+                session_id, "SetVolume", {"Volume": str(params.get("volume", 0))}
+            )
+        if cmd_id == media_player.Commands.SEEK and params:
+            position_ticks = int(params.get("media_position", 0)) * EMBY_TICKS_PER_SECOND
+            return await self._device.send_command(
+                session_id, "Seek", {"SeekPositionTicks": str(position_ticks)}
+            )
+        if cmd_id == media_player.Commands.CURSOR_UP:
+            return await self._device.send_command(session_id, "MoveUp")
+        if cmd_id == media_player.Commands.CURSOR_DOWN:
+            return await self._device.send_command(session_id, "MoveDown")
+        if cmd_id == media_player.Commands.CURSOR_LEFT:
+            return await self._device.send_command(session_id, "MoveLeft")
+        if cmd_id == media_player.Commands.CURSOR_RIGHT:
+            return await self._device.send_command(session_id, "MoveRight")
+        if cmd_id == media_player.Commands.CURSOR_ENTER:
+            return await self._device.send_command(session_id, "Select")
+        if cmd_id == media_player.Commands.BACK:
+            return await self._device.send_command(session_id, "Back")
+        if cmd_id == media_player.Commands.HOME:
+            return await self._device.send_command(session_id, "GoHome")
+        if cmd_id == media_player.Commands.MENU:
+            return await self._device.send_command(session_id, "ContextMenu")
+        if cmd_id == media_player.Commands.CONTEXT_MENU:
+            return await self._device.send_command(session_id, "ContextMenu")
+        if cmd_id == media_player.Commands.PLAY_MEDIA:
+            return await self._handle_play_media(session_id, params)
+
+        _LOG.warning("[%s] Unhandled command: %s", self.id, cmd_id)
         return False
 
-    async def command_handler(self, entity: ucapi.Entity, cmd_id: str, params: dict[str, Any] | None = None) -> ucapi.StatusCodes:
-        session_id = self._session_data.get('Id')
-        _LOG.info(f"COMMAND RECEIVED: '{cmd_id}' for session '{session_id}'")
-
-        if not session_id:
-            _LOG.error("Command failed: No session ID found.")
-            return ucapi.StatusCodes.SERVER_ERROR
-
-        try:
-            success = False
-
-            if cmd_id == ucapi.media_player.Commands.PLAY_PAUSE:
-                success = await self._send_prioritized_command(session_id, ["PlayPause", "Select"])
-            elif cmd_id == ucapi.media_player.Commands.STOP:
-                success = await self._send_prioritized_command(session_id, ["Stop", "Back"])
-            elif cmd_id == ucapi.media_player.Commands.NEXT:
-                success = await self._send_prioritized_command(session_id, ["NextTrack", "NextLetter"])
-            elif cmd_id == ucapi.media_player.Commands.PREVIOUS:
-                success = await self._send_prioritized_command(session_id, ["PreviousTrack", "PreviousLetter"])
-            elif cmd_id == ucapi.media_player.Commands.FAST_FORWARD:
-                success = await self._send_prioritized_command(session_id, ["FastForward", "MoveRight"])
-            elif cmd_id == ucapi.media_player.Commands.REWIND:
-                success = await self._send_prioritized_command(session_id, ["Rewind", "MoveLeft"])
-            elif cmd_id == ucapi.media_player.Commands.VOLUME_UP:
-                success = await self._client.send_command(session_id, "VolumeUp")
-            elif cmd_id == ucapi.media_player.Commands.VOLUME_DOWN:
-                success = await self._client.send_command(session_id, "VolumeDown")
-            elif cmd_id == ucapi.media_player.Commands.MUTE_TOGGLE:
-                success = await self._client.send_command(session_id, "ToggleMute")
-            elif cmd_id == ucapi.media_player.Commands.VOLUME and params:
-                success = await self._client.send_command(session_id, "SetVolume", {"Volume": params.get('volume')})
-            elif cmd_id == ucapi.media_player.Commands.SEEK and params:
-                position_ticks = int(params.get('media_position', 0) * 10000000)
-                success = await self._client.send_command(session_id, "Seek", {"SeekPositionTicks": position_ticks})
-            else:
-                _LOG.warning(f"Unsupported command received: {cmd_id}")
-                return ucapi.StatusCodes.NOT_IMPLEMENTED
-
-            _LOG.info(f"Command '{cmd_id}' execution result: {'Success' if success else 'Failed'}")
-
-            if success:
-                await asyncio.sleep(0.5)
-                await self.push_update()
-
-            return ucapi.StatusCodes.OK if success else ucapi.StatusCodes.SERVER_ERROR
-
-        except Exception as e:
-            _LOG.error(f"Command execution failed with exception: {e}", exc_info=True)
-            return ucapi.StatusCodes.SERVER_ERROR
-
-    def _clear_media_attributes(self):
-        """Clear all media attributes and set state to STANDBY."""
-        cleared_attributes = {
-            ucapi.media_player.Attributes.STATE: ucapi.media_player.States.STANDBY,
-            ucapi.media_player.Attributes.MEDIA_TYPE: None,
-            ucapi.media_player.Attributes.MEDIA_TITLE: None,
-            ucapi.media_player.Attributes.MEDIA_ARTIST: None,
-            ucapi.media_player.Attributes.MEDIA_ALBUM: None,
-            ucapi.media_player.Attributes.MEDIA_IMAGE_URL: None,
-            ucapi.media_player.Attributes.MEDIA_DURATION: None,
-            ucapi.media_player.Attributes.MEDIA_POSITION: None,
-            ucapi.media_player.Attributes.MUTED: False
-        }
-        self.attributes.update(cleared_attributes)
-        if self._api:
-            self._api.configured_entities.update_attributes(self.id, cleared_attributes)
-
-    async def update_from_session(self, session_data: dict[str, Any]):
-        self._session_data = session_data
-        self.supported_commands = session_data.get('SupportedCommands', [])
-        new_attributes = self._build_attributes()
-
-        if new_attributes != self.attributes:
-            self.attributes.update(new_attributes)
-            if self._api:
-                self._api.configured_entities.update_attributes(self.id, new_attributes)
-
-    async def push_update(self):
-        session_id = self._session_data.get('Id')
-        if not session_id: return
-
-        try:
-            updated_session = await self._client.get_session_by_id(session_id)
-            if updated_session:
-                await self.update_from_session(updated_session)
-            else:
-                _LOG.info(f"Session {session_id} appears to have ended.")
-                self._clear_media_attributes()
-                self.stop_monitoring()
-                if self._api:
-                    self._api.available_entities.remove(self.id)
-        except Exception as e:
-            _LOG.error(f"Error during push_update for {self.id}: {e}", exc_info=True)
-            self._clear_media_attributes()
-
-    async def _periodic_update(self):
-        while self._is_monitoring:
-            try:
-                await self.push_update()
-                await asyncio.sleep(5)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                _LOG.error(f"Periodic update failed for {self.id}: {e}", exc_info=True)
-                await asyncio.sleep(15)
-
-    async def start_monitoring(self):
-        if not self._is_monitoring:
-            _LOG.info(f"Starting monitoring for {self.id}")
-            self._is_monitoring = True
-            self._update_task = asyncio.create_task(self._periodic_update())
-
-    def stop_monitoring(self):
-        if self._is_monitoring:
-            _LOG.info(f"Stopping monitoring for {self.id}")
-            self._is_monitoring = False
-            if self._update_task:
-                self._update_task.cancel()
-                self._update_task = None
+    async def _handle_play_media(self, session_id: str, params: dict[str, Any] | None) -> bool:
+        if not params:
+            return False
+        media_id = params.get("media_id", "")
+        if not media_id:
+            return False
+        if media_id.startswith("item_"):
+            item_id = media_id[5:]
+            return await self._device.play_items(session_id, [item_id])
+        _LOG.warning("[%s] Unknown media_id format: %s", self.id, media_id)
+        return False
