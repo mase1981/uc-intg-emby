@@ -85,6 +85,8 @@ class EmbyServer(PollingDevice):
         return session.get("Id") if session else None
 
     async def establish_connection(self) -> EmbyClient:
+        if self._client:
+            await self._client.close()
         self._client = EmbyClient(self._device_config.server_url, self._device_config.api_key)
         await self._client.connect()
 

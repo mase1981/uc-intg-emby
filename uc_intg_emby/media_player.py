@@ -134,11 +134,7 @@ class EmbyMediaPlayer(MediaPlayerEntity):
                 play_state.get("PositionTicks", 0) // EMBY_TICKS_PER_SECOND
             )
 
-            item_id = now_playing.get("Id")
-            if item_id and "Primary" in now_playing.get("ImageTags", {}):
-                attrs[media_player.Attributes.MEDIA_IMAGE_URL] = self._device.build_image_url(item_id)
-            else:
-                attrs[media_player.Attributes.MEDIA_IMAGE_URL] = ""
+            attrs[media_player.Attributes.MEDIA_IMAGE_URL] = self._resolve_image_url(now_playing)
         else:
             attrs[media_player.Attributes.STATE] = media_player.States.ON
             attrs[media_player.Attributes.MEDIA_TITLE] = ""
@@ -189,6 +185,23 @@ class EmbyMediaPlayer(MediaPlayerEntity):
             attrs[media_player.Attributes.MEDIA_TITLE] = now_playing.get("Name", "")
             attrs[media_player.Attributes.MEDIA_ARTIST] = ""
             attrs[media_player.Attributes.MEDIA_ALBUM] = ""
+
+    def _resolve_image_url(self, now_playing: dict) -> str:
+        item_id = now_playing.get("Id", "")
+        if item_id and "Primary" in now_playing.get("ImageTags", {}):
+            return self._device.build_image_url(item_id)
+        series_id = now_playing.get("SeriesId", "")
+        if series_id and now_playing.get("SeriesPrimaryImageTag"):
+            return self._device.build_image_url(series_id)
+        album_id = now_playing.get("AlbumId", "")
+        if album_id and now_playing.get("AlbumPrimaryImageTag"):
+            return self._device.build_image_url(album_id)
+        parent_id = now_playing.get("ParentId", "")
+        if parent_id and now_playing.get("ParentPrimaryImageTag"):
+            return self._device.build_image_url(parent_id)
+        if item_id:
+            return self._device.build_image_url(item_id)
+        return ""
 
     async def browse(self, options: BrowseOptions) -> BrowseResults | StatusCodes:
         return await browser.browse(self._device, options)
