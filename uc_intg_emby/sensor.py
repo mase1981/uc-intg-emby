@@ -4,8 +4,8 @@ import logging
 from ucapi import sensor
 from ucapi_framework import SensorEntity
 
-from .config import EmbyDeviceConfig
-from .device import EmbyServer
+from uc_intg_emby.config import EmbyDeviceConfig
+from uc_intg_emby.device import EmbyServer
 
 _LOG = logging.getLogger(__name__)
 

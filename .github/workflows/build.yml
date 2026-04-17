@@ -45,16 +45,28 @@ jobs:
             bash -c \
             "cd /workspace && \
               python -m pip install -r requirements.txt && \
-              pyinstaller --clean --onedir --name intg-${{ env.DRIVER_ID }} \
+              pyinstaller --clean --onedir --name driver \
+              --add-data driver.json:. \
               --collect-all zeroconf \
+              --collect-all ucapi \
+              --collect-all ucapi_framework \
+              --hidden-import uc_intg_emby.driver \
+              --hidden-import uc_intg_emby.device \
+              --hidden-import uc_intg_emby.config \
+              --hidden-import uc_intg_emby.client \
+              --hidden-import uc_intg_emby.const \
+              --hidden-import uc_intg_emby.media_player \
+              --hidden-import uc_intg_emby.sensor \
+              --hidden-import uc_intg_emby.browser \
+              --hidden-import uc_intg_emby.setup_flow \
+              --paths . \
               uc_intg_emby/__init__.py"
 
       - name: Prepare artifacts
         shell: bash
         run: |
           mkdir -p artifacts/bin
-          mv dist/intg-${{ env.DRIVER_ID }}/* artifacts/bin
-          mv artifacts/bin/intg-${{ env.DRIVER_ID }} artifacts/bin/driver
+          mv dist/driver/* artifacts/bin
           cp driver.json artifacts/
           echo "ARTIFACT_NAME=uc-intg-${{ env.DRIVER_ID }}-${{ env.VERSION }}-aarch64" >> $GITHUB_ENV
 

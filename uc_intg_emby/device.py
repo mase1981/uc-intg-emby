@@ -7,9 +7,9 @@ from typing import Any
 
 from ucapi_framework import DeviceEvents, PollingDevice
 
-from .client import EmbyClient
-from .config import EmbyDeviceConfig
-from .const import EMBY_POLL_INTERVAL, EMBY_TICKS_PER_SECOND
+from uc_intg_emby.client import EmbyClient
+from uc_intg_emby.config import EmbyDeviceConfig
+from uc_intg_emby.const import EMBY_POLL_INTERVAL, EMBY_TICKS_PER_SECOND
 
 _LOG = logging.getLogger(__name__)
 
@@ -155,7 +155,7 @@ class EmbyServer(PollingDevice):
         if not new_device_ids:
             return
 
-        from .media_player import EmbyMediaPlayer
+        from uc_intg_emby.media_player import EmbyMediaPlayer
 
         new_entities = []
         for device_id in new_device_ids:

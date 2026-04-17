@@ -1,9 +1,9 @@
 """Emby integration driver. :copyright: (c) 2026 by Meir Miyara. :license: MPL-2.0"""
 from ucapi_framework import BaseIntegrationDriver
 
-from .config import EmbyDeviceConfig
-from .device import EmbyServer
-from .sensor import EmbyActiveSessionsSensor, EmbyServerNameSensor, EmbyServerVersionSensor
+from uc_intg_emby.config import EmbyDeviceConfig
+from uc_intg_emby.device import EmbyServer
+from uc_intg_emby.sensor import EmbyActiveSessionsSensor, EmbyServerNameSensor, EmbyServerVersionSensor
 
 
 class EmbyDriver(BaseIntegrationDriver[EmbyServer, EmbyDeviceConfig]):

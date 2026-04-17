@@ -5,8 +5,8 @@ from typing import Any
 from ucapi import RequestUserInput
 from ucapi_framework import BaseSetupFlow
 
-from .client import EmbyClient
-from .config import EmbyDeviceConfig
+from uc_intg_emby.client import EmbyClient
+from uc_intg_emby.config import EmbyDeviceConfig
 
 _LOG = logging.getLogger(__name__)
 

@@ -17,7 +17,7 @@ from ucapi.api_definitions import (
 )
 
 if TYPE_CHECKING:
-    from .device import EmbyServer
+    from uc_intg_emby.device import EmbyServer
 
 _LOG = logging.getLogger(__name__)
 

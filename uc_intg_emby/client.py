@@ -6,7 +6,7 @@ from typing import Any
 import aiohttp
 import certifi
 
-from .const import EMBY_API_TIMEOUT, EMBY_CONNECTION_TIMEOUT
+from uc_intg_emby.const import EMBY_API_TIMEOUT, EMBY_CONNECTION_TIMEOUT
 
 _LOG = logging.getLogger(__name__)
 

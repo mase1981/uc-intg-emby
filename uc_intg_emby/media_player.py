@@ -8,10 +8,10 @@ from ucapi import media_player, StatusCodes
 from ucapi.api_definitions import BrowseOptions, BrowseResults, SearchOptions, SearchResults
 from ucapi_framework import MediaPlayerEntity
 
-from . import browser
-from .config import EmbyDeviceConfig
-from .const import EMBY_TICKS_PER_SECOND
-from .device import EmbyServer, sanitize_id
+from uc_intg_emby import browser
+from uc_intg_emby.config import EmbyDeviceConfig
+from uc_intg_emby.const import EMBY_TICKS_PER_SECOND
+from uc_intg_emby.device import EmbyServer, sanitize_id
 
 _LOG = logging.getLogger(__name__)
 
