@@ -30,7 +30,7 @@ classifiers = [
 
 dependencies = [
     "ucapi>=0.7.0",
-    "ucapi-framework>=1.9.4",
+    "ucapi-framework>=1.9.2",
     "aiohttp>=3.9.0",
     "certifi>=2023.0.0",
 ]
