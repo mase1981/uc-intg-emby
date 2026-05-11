@@ -60,8 +60,9 @@ def _create_ui_pages() -> list[UiPage]:
         create_ui_icon("uc:down-arrow", 1, 2, cmd="MOVE_DOWN"),
         create_ui_icon("uc:search", 0, 3, cmd="GO_TO_SEARCH"),
         create_ui_icon("uc:menu", 1, 3, cmd="GO_TO_SETTINGS"),
-        create_ui_text("PgUp", 2, 3, cmd="PAGE_UP"),
-        create_ui_text("PgDn", 3, 3, cmd="PAGE_DOWN"),
+        create_ui_text("Guide", 2, 3, cmd="GUIDE"),
+        create_ui_text("PgUp", 0, 4, cmd="PAGE_UP"),
+        create_ui_text("PgDn", 1, 4, cmd="PAGE_DOWN"),
     ])
 
     playback_page = UiPage("playback", "Playback", grid=Size(4, 6), items=[
@@ -102,7 +103,18 @@ EMBY_COMMAND_MAP = {
     "TOGGLE_FULLSCREEN": ("command", "ToggleFullscreen"),
     "VOLUME_UP": ("command", "VolumeUp"),
     "VOLUME_DOWN": ("command", "VolumeDown"),
+    "MUTE": ("command", "Mute"),
+    "UNMUTE": ("command", "Unmute"),
     "MUTE_TOGGLE": ("command", "ToggleMute"),
+    "SET_VOLUME": ("command", "SetVolume"),
+    "SET_AUDIO_STREAM": ("command", "SetAudioStreamIndex"),
+    "SET_SUBTITLE_STREAM": ("command", "SetSubtitleStreamIndex"),
+    "GUIDE": ("command", "Guide"),
+    "TAKE_SCREENSHOT": ("command", "TakeScreenshot"),
+    "SEND_KEY": ("command", "SendKey"),
+    "SEND_STRING": ("command", "SendString"),
+    "DISPLAY_MESSAGE": ("command", "DisplayMessage"),
+    "DISPLAY_CONTENT": ("command", "DisplayContent"),
     "PLAY_PAUSE": ("playstate", "PlayPause"),
     "STOP": ("playstate", "Stop"),
     "NEXT_TRACK": ("playstate", "NextTrack"),
@@ -159,7 +171,8 @@ class EmbyRemote(RemoteEntity):
             command = params.get("command", "") if params else ""
             if not command:
                 return StatusCodes.BAD_REQUEST
-            return await self._dispatch_command(command)
+            cmd_params = params.get("params", {}) if params else {}
+            return await self._dispatch_command(command, cmd_params)
 
         if cmd_id == remote.Commands.SEND_CMD_SEQUENCE:
             for command in (params.get("sequence", []) if params else []):
@@ -170,7 +183,9 @@ class EmbyRemote(RemoteEntity):
 
         return StatusCodes.NOT_IMPLEMENTED
 
-    async def _dispatch_command(self, command: str) -> StatusCodes:
+    async def _dispatch_command(
+        self, command: str, params: dict[str, Any] | None = None
+    ) -> StatusCodes:
         session_id = self._device.get_session_id_for_device(self._emby_device_id)
         if not session_id:
             _LOG.warning("[%s] No active session for command %s", self.id, command)
@@ -185,6 +200,8 @@ class EmbyRemote(RemoteEntity):
         try:
             if cmd_type == "playstate":
                 success = await self._device.send_playstate_command(session_id, emby_cmd)
+            elif params:
+                success = await self._device.send_command(session_id, emby_cmd, params)
             else:
                 success = await self._device.send_command(session_id, emby_cmd)
             return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
