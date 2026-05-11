@@ -1,13 +1,13 @@
 {
   "driver_id": "uc-intg-emby",
-  "version": "2.0.4",
+  "version": "3.0.0",
   "min_core_api": "0.22.0",
   "name": {
     "en": "Emby Media Server"
   },
   "icon": "uc:tv",
   "description": {
-    "en": "Integration for Emby Media Server providing media player control, media browsing, and server monitoring"
+    "en": "Integration for Emby Media Server providing media player control, remote control, media browsing, and server monitoring"
   },
   "developer": {
     "name": "Meir Miyara",
@@ -35,5 +35,5 @@
       }
     ]
   },
-  "release_date": "2026-04-17"
+  "release_date": "2026-05-11"
 }

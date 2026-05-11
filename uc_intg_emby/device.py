@@ -30,6 +30,7 @@ class EmbyServer(PollingDevice):
 
         self._server_name: str = ""
         self._server_version: str = ""
+        self._server_os: str = ""
         self._sessions: dict[str, dict[str, Any]] = {}
         self._known_device_ids: set[str] = set()
 
@@ -60,6 +61,10 @@ class EmbyServer(PollingDevice):
     @property
     def server_version(self) -> str:
         return self._server_version
+
+    @property
+    def server_os(self) -> str:
+        return self._server_os
 
     @property
     def sessions(self) -> dict[str, dict[str, Any]]:
@@ -99,7 +104,8 @@ class EmbyServer(PollingDevice):
         if server_info:
             self._server_name = server_info.get("ServerName", "Emby Server")
             self._server_version = server_info.get("Version", "Unknown")
-            _LOG.info("[%s] Connected to %s v%s", self.log_id, self._server_name, self._server_version)
+            self._server_os = server_info.get("OperatingSystemDisplayName", "") or server_info.get("OperatingSystem", "Unknown")
+            _LOG.info("[%s] Connected to %s v%s (%s)", self.log_id, self._server_name, self._server_version, self._server_os)
 
         try:
             await self._update_state()
@@ -156,13 +162,14 @@ class EmbyServer(PollingDevice):
             return
 
         from uc_intg_emby.media_player import EmbyMediaPlayer
+        from uc_intg_emby.remote import EmbyRemote
 
         new_entities = []
         for device_id in new_device_ids:
             session = self._sessions[device_id]
             try:
-                entity = EmbyMediaPlayer(self._device_config, self, session)
-                new_entities.append(entity)
+                new_entities.append(EmbyMediaPlayer(self._device_config, self, session))
+                new_entities.append(EmbyRemote(self._device_config, self, session))
                 self._known_device_ids.add(device_id)
                 _LOG.info(
                     "[%s] New session: %s (%s)",

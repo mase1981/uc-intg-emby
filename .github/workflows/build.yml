@@ -57,6 +57,7 @@ jobs:
               --hidden-import uc_intg_emby.const \
               --hidden-import uc_intg_emby.media_player \
               --hidden-import uc_intg_emby.sensor \
+              --hidden-import uc_intg_emby.remote \
               --hidden-import uc_intg_emby.browser \
               --hidden-import uc_intg_emby.setup_flow \
               --paths . \

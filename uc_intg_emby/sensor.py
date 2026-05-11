@@ -1,5 +1,6 @@
 """Emby sensor entities. :copyright: (c) 2026 by Meir Miyara. :license: MPL-2.0"""
 import logging
+from typing import Any
 
 from ucapi import sensor
 from ucapi_framework import SensorEntity
@@ -94,4 +95,63 @@ class EmbyActiveSessionsSensor(SensorEntity):
         self.update({
             sensor.Attributes.STATE: sensor.States.ON,
             sensor.Attributes.VALUE: str(self._device.active_session_count),
+        })
+
+
+class EmbyServerURLSensor(SensorEntity):
+    """Sensor showing the Emby server URL."""
+
+    def __init__(self, device_config: EmbyDeviceConfig, device: EmbyServer) -> None:
+        self._device = device
+        self._device_config = device_config
+        entity_id = f"sensor.{device_config.identifier}.server_url"
+        super().__init__(
+            entity_id,
+            f"{device_config.name} Server URL",
+            features=[],
+            attributes={
+                sensor.Attributes.STATE: sensor.States.UNKNOWN,
+                sensor.Attributes.VALUE: "",
+            },
+            device_class=sensor.DeviceClasses.CUSTOM,
+            options={sensor.Options.CUSTOM_UNIT: ""},
+        )
+        self.subscribe_to_device(device)
+
+    async def sync_state(self) -> None:
+        if self._device.state == "UNAVAILABLE":
+            self.update({sensor.Attributes.STATE: sensor.States.UNAVAILABLE})
+            return
+        self.update({
+            sensor.Attributes.STATE: sensor.States.ON,
+            sensor.Attributes.VALUE: self._device_config.server_url or "Unknown",
+        })
+
+
+class EmbyServerOSSensor(SensorEntity):
+    """Sensor showing the Emby server operating system."""
+
+    def __init__(self, device_config: EmbyDeviceConfig, device: EmbyServer) -> None:
+        self._device = device
+        entity_id = f"sensor.{device_config.identifier}.server_os"
+        super().__init__(
+            entity_id,
+            f"{device_config.name} Operating System",
+            features=[],
+            attributes={
+                sensor.Attributes.STATE: sensor.States.UNKNOWN,
+                sensor.Attributes.VALUE: "",
+            },
+            device_class=sensor.DeviceClasses.CUSTOM,
+            options={sensor.Options.CUSTOM_UNIT: ""},
+        )
+        self.subscribe_to_device(device)
+
+    async def sync_state(self) -> None:
+        if self._device.state == "UNAVAILABLE":
+            self.update({sensor.Attributes.STATE: sensor.States.UNAVAILABLE})
+            return
+        self.update({
+            sensor.Attributes.STATE: sensor.States.ON,
+            sensor.Attributes.VALUE: self._device.server_os or "Unknown",
         })

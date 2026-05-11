@@ -3,7 +3,13 @@ from ucapi_framework import BaseIntegrationDriver
 
 from uc_intg_emby.config import EmbyDeviceConfig
 from uc_intg_emby.device import EmbyServer
-from uc_intg_emby.sensor import EmbyActiveSessionsSensor, EmbyServerNameSensor, EmbyServerVersionSensor
+from uc_intg_emby.sensor import (
+    EmbyActiveSessionsSensor,
+    EmbyServerNameSensor,
+    EmbyServerOSSensor,
+    EmbyServerURLSensor,
+    EmbyServerVersionSensor,
+)
 
 
 class EmbyDriver(BaseIntegrationDriver[EmbyServer, EmbyDeviceConfig]):
@@ -16,6 +22,8 @@ class EmbyDriver(BaseIntegrationDriver[EmbyServer, EmbyDeviceConfig]):
                 EmbyServerNameSensor,
                 EmbyServerVersionSensor,
                 EmbyActiveSessionsSensor,
+                EmbyServerURLSensor,
+                EmbyServerOSSensor,
             ],
             driver_id="uc-intg-emby",
             require_connection_before_registry=True,
