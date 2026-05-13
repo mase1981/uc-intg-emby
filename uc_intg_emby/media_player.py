@@ -5,7 +5,7 @@ import logging
 from typing import Any, TYPE_CHECKING
 
 from ucapi import media_player, StatusCodes
-from ucapi.api_definitions import BrowseOptions, BrowseResults, SearchOptions, SearchResults
+from ucapi.media_player import BrowseOptions, BrowseResults, SearchOptions, SearchResults
 from ucapi_framework import MediaPlayerEntity
 
 from uc_intg_emby import browser
