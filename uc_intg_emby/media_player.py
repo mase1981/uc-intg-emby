@@ -92,7 +92,6 @@ class EmbyMediaPlayer(MediaPlayerEntity):
             device_class=media_player.DeviceClasses.STREAMING_BOX,
             cmd_handler=self._handle_command,
         )
-        self.subscribe_to_device(device)
 
     async def sync_state(self) -> None:
         session = self._device.get_session(self._emby_device_id)
@@ -155,7 +154,7 @@ class EmbyMediaPlayer(MediaPlayerEntity):
         media_type = now_playing.get("Type", "")
 
         if media_type == "Episode":
-            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaType.TVSHOW
+            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaContentType.TV_SHOW
             attrs[media_player.Attributes.MEDIA_TITLE] = now_playing.get("Name", "")
             series = now_playing.get("SeriesName", "")
             season_num = now_playing.get("ParentIndexNumber")
@@ -167,7 +166,7 @@ class EmbyMediaPlayer(MediaPlayerEntity):
             attrs[media_player.Attributes.MEDIA_ALBUM] = now_playing.get("SeasonName", "")
 
         elif media_type == "Movie":
-            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaType.MOVIE
+            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaContentType.MOVIE
             name = now_playing.get("Name", "")
             year = now_playing.get("ProductionYear")
             attrs[media_player.Attributes.MEDIA_TITLE] = f"{name} ({year})" if year else name
@@ -175,13 +174,13 @@ class EmbyMediaPlayer(MediaPlayerEntity):
             attrs[media_player.Attributes.MEDIA_ALBUM] = ""
 
         elif media_type in ("Audio", "MusicAlbum"):
-            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaType.MUSIC
+            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaContentType.MUSIC
             attrs[media_player.Attributes.MEDIA_TITLE] = now_playing.get("Name", "")
             attrs[media_player.Attributes.MEDIA_ARTIST] = ", ".join(now_playing.get("Artists", []))
             attrs[media_player.Attributes.MEDIA_ALBUM] = now_playing.get("Album", "")
 
         else:
-            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaType.VIDEO
+            attrs[media_player.Attributes.MEDIA_TYPE] = media_player.MediaContentType.VIDEO
             attrs[media_player.Attributes.MEDIA_TITLE] = now_playing.get("Name", "")
             attrs[media_player.Attributes.MEDIA_ARTIST] = ""
             attrs[media_player.Attributes.MEDIA_ALBUM] = ""

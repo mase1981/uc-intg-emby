@@ -155,7 +155,6 @@ class EmbyRemote(RemoteEntity):
             ui_pages=_create_ui_pages(),
             cmd_handler=self._handle_command,
         )
-        self.subscribe_to_device(device)
 
     async def sync_state(self) -> None:
         session = self._device.get_session(self._emby_device_id)

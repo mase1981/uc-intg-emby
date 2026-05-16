@@ -182,6 +182,8 @@ class EmbyServer(PollingDevice):
 
         if new_entities:
             self.driver.add_entities(new_entities)
+            for entity in new_entities:
+                entity.subscribe_to_device(self)
 
     async def send_playstate_command(self, session_id: str, command: str, seek_ticks: int | None = None) -> bool:
         if not self._client:
